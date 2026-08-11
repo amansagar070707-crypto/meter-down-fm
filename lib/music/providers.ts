@@ -148,6 +148,19 @@ function bestThumbnail(thumbnails?: Record<string, YouTubeThumbnail>) {
   return thumbnails?.maxres?.url ?? thumbnails?.standard?.url ?? thumbnails?.high?.url ?? thumbnails?.medium?.url ?? thumbnails?.default?.url ?? null;
 }
 
+function youtubeCredit(description: string | undefined, kind: "singer" | "writer") {
+  if (!description) return "";
+  const label = kind === "singer"
+    ? "(?:singer(?:s)?|sung by|vocals?|playback singer(?:s)?)"
+    : "(?:lyrics?|lyricist|writer|written by)";
+  const pattern = new RegExp(`^\\s*${label}\\s*[:–-]\\s*(.+?)\\s*$`, "i");
+  for (const line of description.split(/\r?\n/)) {
+    const value = line.match(pattern)?.[1]?.trim();
+    if (value) return value.replace(/\s*[|•].*$/, "").trim();
+  }
+  return "";
+}
+
 async function youtubeJson<T>(path: string, parameters: Record<string, string>) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) throw new Error("YouTube metadata import is not configured.");
@@ -184,10 +197,12 @@ async function importYouTube(reference: PlaylistReference): Promise<NormalizedPl
       const snippet = item.snippet;
       const videoId = snippet?.resourceId?.videoId;
       if (!videoId || !snippet?.title || snippet.title === "Deleted video" || snippet.title === "Private video") continue;
+      const singer = youtubeCredit(snippet.description, "singer");
+      const writer = youtubeCredit(snippet.description, "writer");
       tracks.push({
         title: snippet.title,
-        artist: snippet.videoOwnerChannelTitle ?? snippet.channelTitle ?? "YouTube artist",
-        album: "",
+        artist: singer || snippet.videoOwnerChannelTitle || snippet.channelTitle || "YouTube artist",
+        album: writer,
         durationMs: null,
         artworkUrl: bestThumbnail(snippet.thumbnails),
         sourceProvider: "youtube",
@@ -213,4 +228,3 @@ export async function importPlaylistMetadata(value: string) {
   const reference = parsePlaylistReference(value);
   return reference.provider === "spotify" ? importSpotify(reference) : importYouTube(reference);
 }
-

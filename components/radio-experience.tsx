@@ -11,6 +11,8 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  Moon,
+  Sun,
   Volume2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,12 +22,15 @@ type AudioTrack = {
   id: string;
   title: string;
   artist: string;
+  album: string;
   durationMs: number | null;
   artworkUrl: string | null;
   sourceUrl: string | null;
   sourceProvider: "spotify" | "youtube" | "manual";
   sourceId: string;
 };
+
+type Appearance = "day" | "night";
 
 type CloudPlaylist = {
   id: string;
@@ -212,45 +217,56 @@ function HornButton({ onHorn }: { onHorn: () => void }) {
   );
 }
 
-function Hero({ onHorn, playlist, catalogLoading }: { onHorn: () => void; playlist: CloudPlaylist | null; catalogLoading: boolean }) {
-  const [view, setView] = useState<"outside" | "inside">("outside");
-
+function AppearanceToggle({ appearance, onChange }: { appearance: Appearance; onChange: (appearance: Appearance) => void }) {
   return (
-    <section className={`hero hero--${view}`} aria-labelledby="hero-title">
+    <div className="appearance-toggle" role="group" aria-label="Color theme">
+      <button type="button" aria-pressed={appearance === "day"} onClick={() => onChange("day")} aria-label="Use daylight theme">
+        <Sun size={15} aria-hidden="true" />
+        <span>Day</span>
+      </button>
+      <button type="button" aria-pressed={appearance === "night"} onClick={() => onChange("night")} aria-label="Use night theme">
+        <Moon size={15} aria-hidden="true" />
+        <span>Night</span>
+      </button>
+    </div>
+  );
+}
+
+function Hero({ onHorn, playlist, catalogLoading, appearance, onAppearanceChange }: {
+  onHorn: () => void;
+  playlist: CloudPlaylist | null;
+  catalogLoading: boolean;
+  appearance: Appearance;
+  onAppearanceChange: (appearance: Appearance) => void;
+}) {
+  return (
+    <section className={`hero hero--${appearance}`} aria-labelledby="hero-title">
       <Image
-        className={`hero__image hero__image--outside ${view === "outside" ? "hero__image--active" : ""}`}
-        src="/auto-wala.png"
-        alt={view === "outside" ? "Illustrated yellow-and-green Delhi auto-rickshaw at dusk" : ""}
+        className="hero__image hero__image--active"
+        src="/auto-wala-interior.png"
+        alt="Passenger view inside a Delhi auto-rickshaw, looking toward its glowing fare meter and handlebar"
         fill
         priority
-        sizes="100vw"
-      />
-      <Image
-        className={`hero__image hero__image--inside ${view === "inside" ? "hero__image--active" : ""}`}
-        src="/auto-wala-interior.png"
-        alt={view === "inside" ? "Passenger view inside a Delhi auto-rickshaw, looking toward its glowing fare meter and handlebar" : ""}
-        fill
+        draggable={false}
         sizes="100vw"
       />
       <div className="hero__wash" aria-hidden="true" />
       <div className="hero__topbar">
         <LocalClock />
         <ListenerPill />
-        <PlatformLinks url={playlist?.sourceUrl} provider={playlist?.sourceProvider} loading={catalogLoading} />
+        <div className="hero__topbar-actions">
+          <AppearanceToggle appearance={appearance} onChange={onAppearanceChange} />
+          <PlatformLinks url={playlist?.sourceUrl} provider={playlist?.sourceProvider} loading={catalogLoading} />
+        </div>
       </div>
       <div className="hero__title-wrap">
-        <span className="route-stamp">DL 01 · NIGHT ROUTE</span>
+        <span className="route-stamp">DL 01 · {appearance === "day" ? "DAY ROUTE" : "NIGHT ROUTE"}</span>
         <h1 id="hero-title">मीटर डाउन</h1>
         <div className="hero__fm" aria-hidden="true"><span>FM</span></div>
         <p className="hero__tagline">दिल्ली की सड़कों का अपना रेडियो</p>
       </div>
       <HornButton onHorn={onHorn} />
       <ShayariLine />
-      <div className="view-toggle" role="group" aria-label="Auto view">
-        <button type="button" aria-pressed={view === "outside"} onClick={() => setView("outside")}>बाहर</button>
-        <button type="button" aria-pressed={view === "inside"} onClick={() => setView("inside")}>अंदर</button>
-      </div>
-      <p className="view-status" aria-live="polite">{view === "inside" ? "अब ऑटो के अंदर का नज़ारा" : "अब ऑटो के बाहर का नज़ारा"}</p>
     </section>
   );
 }
@@ -259,6 +275,19 @@ function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
+}
+
+function getTrackCredits(track: AudioTrack) {
+  const publisherName = /(official|records?|music|vevo|topic|t-?series|tips|sony|saregama|zee)/i.test(track.artist);
+  const labelledSinger = track.title.match(/(?:singer|singers|vocals?)\s*[:–-]\s*([^|•]+)/i)?.[1]?.trim();
+  const titleSections = track.title.split(/[|•]/).map((section) => section.trim()).filter(Boolean);
+  const inferredSinger = [...titleSections].reverse().find((section) =>
+    /(?:,|&|\band\b)/i.test(section)
+    && !/\b(video|song|movie|film|hits?|lyrics?|official|full|hd|4k|jukebox)\b/i.test(section),
+  );
+  const singer = labelledSinger ?? (!publisherName ? track.artist : inferredSinger);
+  const writer = track.album.trim() || track.title.match(/(?:lyrics?|lyricist|writer|written by)\s*[:–-]\s*([^|•]+)/i)?.[1]?.trim();
+  return { singer, writer };
 }
 
 function PlayerSkeleton() {
@@ -305,6 +334,7 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
   const [error, setError] = useState("");
   const tracks = playlist?.tracks ?? [];
   const track = tracks[trackIndex];
+  const credits = track ? getTrackCredits(track) : null;
 
   const changeTrack = useCallback((direction: -1 | 1, shouldAutoplay = isPlaying) => {
     if (!tracks.length) return;
@@ -510,7 +540,7 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
                 >
                   <span className="playlist-panel__number">{index + 1}</span>
                   <strong>{item.title}</strong>
-                  <span className="playlist-panel__artist">{item.artist}</span>
+                  <span className="playlist-panel__artist">{getTrackCredits(item).singer ?? "Credits unavailable"}</span>
                 </button>
               </li>
             ))}
@@ -519,6 +549,25 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
       ) : null}
 
       <aside className="minimal-player" aria-label="Meter Down FM YouTube player">
+      <span className="liquid-glass-layer" aria-hidden="true">
+        <svg className="liquid-glass-filter" width="0" height="0" focusable="false">
+          <defs>
+            <filter id="meter-down-liquid-glass" x="-35%" y="-100%" width="170%" height="300%" colorInterpolationFilters="sRGB">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="liquid-blur" />
+              <feColorMatrix
+                in="liquid-blur"
+                mode="matrix"
+                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
+              />
+            </filter>
+          </defs>
+        </svg>
+        <span className="liquid-glass-metaballs">
+          <span className="liquid-glass-blob liquid-glass-blob--artwork" />
+          <span className="liquid-glass-blob liquid-glass-blob--controls" />
+        </span>
+        <span className="liquid-glass-sheen" />
+      </span>
 
       {track?.artworkUrl && track.sourceUrl ? (
         <a
@@ -526,7 +575,7 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
           href={track.sourceUrl}
           target="_blank"
           rel="noreferrer"
-          aria-label={`View metadata source for ${track.title} by ${track.artist}`}
+          aria-label={`View metadata source for ${track.title}${credits?.singer ? ` by ${credits.singer}` : ""}`}
           style={{ backgroundImage: `url(${track.artworkUrl})` }}
         />
       ) : <span className="minimal-player__artwork minimal-player__artwork--fallback"><Music2 aria-hidden="true" /></span>}
@@ -534,7 +583,13 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
       <div className="minimal-player__body">
         <div className="minimal-player__copy" aria-live="polite">
           <strong>{track?.title ?? (catalogLoading ? "क्लाउड प्लेलिस्ट आ रही है…" : "Meter Down FM")}</strong>
-          <small>{track?.artist ?? playlist?.title ?? "Cloud playlist not configured"}</small>
+          {track ? (
+            <div className="track-credit-pills">
+              {credits?.singer ? <span>{credits.singer}</span> : null}
+              {credits?.writer ? <span>{credits.writer}</span> : null}
+              {!credits?.singer && !credits?.writer ? <span>Credits unavailable</span> : null}
+            </div>
+          ) : <small>{playlist?.title ?? "Cloud playlist not configured"}</small>}
         </div>
         <input
           className="minimal-player__progress"
@@ -588,9 +643,14 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
 
 export function RadioExperience() {
   const hornContextRef = useRef<AudioContext | null>(null);
+  const [appearance, setAppearance] = useState<Appearance>("day");
   const [playlist, setPlaylist] = useState<CloudPlaylist | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState("");
+
+  const changeAppearance = useCallback((nextAppearance: Appearance) => {
+    setAppearance(nextAppearance);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -637,12 +697,18 @@ export function RadioExperience() {
   }, []);
 
   return (
-    <>
+    <div className={`app-shell app-shell--${appearance}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <main id="main-content" className="radio-room">
-        <Hero onHorn={playHorn} playlist={playlist} catalogLoading={catalogLoading} />
+        <Hero
+          onHorn={playHorn}
+          playlist={playlist}
+          catalogLoading={catalogLoading}
+          appearance={appearance}
+          onAppearanceChange={changeAppearance}
+        />
       </main>
       <MinimalPlayer key={playlist?.id ?? "cloud-player"} playlist={playlist} catalogLoading={catalogLoading} catalogError={catalogError} />
-    </>
+    </div>
   );
 }
