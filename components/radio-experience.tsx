@@ -2,364 +2,647 @@
 
 import Image from "next/image";
 import {
-  ArrowDown,
   ExternalLink,
-  Headphones,
+  ListMusic,
+  Music2,
   Pause,
   Play,
+  RefreshCw,
+  Shuffle,
   SkipBack,
   SkipForward,
   Volume2,
-  VolumeX,
-  Youtube,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CoverArt } from "@/components/cover-art";
-import { shayari, tracks, type Track } from "@/lib/tracks";
+import { shayari } from "@/lib/tracks";
+
+type AudioTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  durationMs: number | null;
+  artworkUrl: string | null;
+  sourceUrl: string | null;
+  sourceProvider: "spotify" | "youtube" | "manual";
+  sourceId: string;
+};
+
+type CloudPlaylist = {
+  id: string;
+  title: string;
+  sourceUrl: string;
+  sourceProvider: "spotify" | "youtube" | "manual";
+  tracks: AudioTrack[];
+};
+
+type YouTubePlayer = {
+  cueVideoById: (videoId: string) => void;
+  destroy: () => void;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  loadVideoById: (videoId: string) => void;
+  pauseVideo: () => void;
+  playVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+};
+
+type YouTubeNamespace = {
+  Player: new (element: HTMLElement, options: {
+    videoId: string;
+    width: string;
+    height: string;
+    playerVars: Record<string, number | string>;
+    events: {
+      onReady: (event: { target: YouTubePlayer }) => void;
+      onStateChange: (event: { data: number; target: YouTubePlayer }) => void;
+      onError: () => void;
+    };
+  }) => YouTubePlayer;
+  PlayerState: {
+    BUFFERING: number;
+    CUED: number;
+    ENDED: number;
+    PAUSED: number;
+    PLAYING: number;
+  };
+};
+
+declare global {
+  interface Window {
+    YT?: YouTubeNamespace;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+let youTubeApiPromise: Promise<YouTubeNamespace> | null = null;
+
+function loadYouTubeApi() {
+  if (typeof window === "undefined") return Promise.reject(new Error("YouTube playback requires a browser."));
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youTubeApiPromise) return youTubeApiPromise;
+
+  youTubeApiPromise = new Promise<YouTubeNamespace>((resolve, reject) => {
+    const previousReadyHandler = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      previousReadyHandler?.();
+      if (window.YT?.Player) resolve(window.YT);
+      else reject(new Error("YouTube Player API did not initialize."));
+    };
+
+    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
+    if (existingScript) return;
+
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.async = true;
+    script.onerror = () => {
+      youTubeApiPromise = null;
+      reject(new Error("YouTube Player API could not be loaded."));
+    };
+    document.head.appendChild(script);
+  });
+
+  return youTubeApiPromise;
+}
 
 function ListenerPill() {
-  const [listeners, setListeners] = useState(44);
+  const [listeners, setListeners] = useState<number | null>(null);
+  const [presenceLoading, setPresenceLoading] = useState(true);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setListeners((current) => Math.max(38, Math.min(52, current + (Math.random() > 0.48 ? 1 : -1))));
-    }, 6000);
-    return () => window.clearInterval(interval);
+    let active = true;
+    const storageKey = "meter-down-listener-session";
+    let sessionId = window.sessionStorage.getItem(storageKey);
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      window.sessionStorage.setItem(storageKey, sessionId);
+    }
+    const heartbeat = async () => {
+      try {
+        const response = await fetch("/api/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+          cache: "no-store",
+        });
+        const payload = (await response.json()) as { online?: number | null };
+        if (active && typeof payload.online === "number") setListeners(payload.online);
+      } catch {
+        // Presence is decorative and must not affect playback.
+      } finally {
+        if (active) setPresenceLoading(false);
+      }
+    };
+    void heartbeat();
+    const interval = window.setInterval(heartbeat, 45_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, []);
 
   return (
-    <div className="listener-pill" aria-label={`${listeners} sawaari listening online`}>
+    <div
+      className="listener-pill"
+      aria-busy={presenceLoading}
+      aria-label={presenceLoading ? "Loading online listener count" : listeners === null ? "Online listener count unavailable" : `${listeners} sawaari listening online`}
+    >
       <span className="live-dot" aria-hidden="true" />
-      <span className="listener-number">{listeners}</span>
+      {presenceLoading
+        ? <span className="listener-number listener-number--skeleton skeleton-block" aria-hidden="true" />
+        : <span className="listener-number">{listeners ?? "—"}</span>}
       <span>सवारी online</span>
     </div>
   );
 }
 
-function PlatformLinks() {
+function LocalClock() {
+  const [time, setTime] = useState("--:--");
+
+  useEffect(() => {
+    const update = () => setTime(new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" }).format(new Date()));
+    update();
+    const interval = window.setInterval(update, 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return <time className="local-clock">दिल्ली · {time}</time>;
+}
+
+function PlatformLinks({ url, provider, loading }: { url?: string; provider?: CloudPlaylist["sourceProvider"]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="platform-links platform-links--loading" aria-label="Loading playlist source" aria-busy="true">
+        <span className="platform-link-skeleton skeleton-block" aria-hidden="true" />
+      </div>
+    );
+  }
+  if (!url || !provider) return <span aria-hidden="true" />;
+  const label = provider === "spotify" ? "Spotify" : provider === "youtube" ? "YouTube" : "Playlist";
   return (
-    <nav className="platform-links" aria-label="Listen on other platforms">
-      <a href="https://open.spotify.com/" target="_blank" rel="noreferrer" aria-label="Open Meter Down FM on Spotify">
-        <Headphones size={16} aria-hidden="true" />
-        <span>Spotify</span>
-        <ExternalLink size={12} aria-hidden="true" />
-      </a>
-      <a href="https://music.youtube.com/" target="_blank" rel="noreferrer" aria-label="Open Meter Down FM on YouTube Music">
-        <Youtube size={17} aria-hidden="true" />
-        <span>YT Music</span>
-        <ExternalLink size={12} aria-hidden="true" />
+    <nav className="platform-links" aria-label="Music source">
+      <a href={url} target="_blank" rel="noreferrer" aria-label={`View playlist metadata source on ${label}`}>
+        <Music2 size={17} aria-hidden="true" />
+        <span>{label}</span>
+        <ExternalLink size={10} aria-hidden="true" />
       </a>
     </nav>
   );
 }
 
-function TailboardMarquee() {
-  const phrases = shayari.slice(0, 4);
+function ShayariLine() {
+  const [index, setIndex] = useState(1);
+
   return (
-    <div className="marquee" aria-label={`Auto tailboard sayings: ${phrases.join("; ")}`}>
-      <div className="marquee__track" aria-hidden="true">
-        {[...phrases, ...phrases].map((phrase, index) => (
-          <span key={`${phrase}-${index}`}>
-            {phrase}<b>✦</b>
-          </span>
-        ))}
-      </div>
+    <div className="shayari-line" aria-live="polite">
+      <p key={index}>{shayari[index]}</p>
+      <button type="button" onClick={() => setIndex((current) => (current + 1) % shayari.length)} aria-label="Show another line">
+        <RefreshCw size={15} aria-hidden="true" />
+      </button>
     </div>
   );
 }
 
-function Hero() {
+function HornButton({ onHorn }: { onHorn: () => void }) {
   return (
-    <section className="hero" aria-labelledby="hero-title">
+    <button className="horn-button" type="button" onClick={onHorn} aria-label="Play auto horn">
+      <span className="horn-button__icon" aria-hidden="true"><Volume2 size={16} /></span>
+      <span><strong>हॉर्न ओके प्लीज़</strong><small>Horn ok pleaseeee</small></span>
+    </button>
+  );
+}
+
+function Hero({ onHorn, playlist, catalogLoading }: { onHorn: () => void; playlist: CloudPlaylist | null; catalogLoading: boolean }) {
+  const [view, setView] = useState<"outside" | "inside">("outside");
+
+  return (
+    <section className={`hero hero--${view}`} aria-labelledby="hero-title">
       <Image
-        className="hero__image"
-        src="/hero-auto.png"
-        alt="Illustrated green-and-yellow Delhi auto-rickshaw at a chai stand in warm evening light"
+        className={`hero__image hero__image--outside ${view === "outside" ? "hero__image--active" : ""}`}
+        src="/auto-wala.png"
+        alt={view === "outside" ? "Illustrated yellow-and-green Delhi auto-rickshaw at dusk" : ""}
         fill
         priority
         sizes="100vw"
       />
+      <Image
+        className={`hero__image hero__image--inside ${view === "inside" ? "hero__image--active" : ""}`}
+        src="/auto-wala-interior.png"
+        alt={view === "inside" ? "Passenger view inside a Delhi auto-rickshaw, looking toward its glowing fare meter and handlebar" : ""}
+        fill
+        sizes="100vw"
+      />
       <div className="hero__wash" aria-hidden="true" />
       <div className="hero__topbar">
+        <LocalClock />
         <ListenerPill />
-        <PlatformLinks />
+        <PlatformLinks url={playlist?.sourceUrl} provider={playlist?.sourceProvider} loading={catalogLoading} />
       </div>
       <div className="hero__title-wrap">
-        <p className="route-stamp">दिल्ली की सड़कों का अपना रेडियो · स्टैंड नं. 42</p>
+        <span className="route-stamp">DL 01 · NIGHT ROUTE</span>
         <h1 id="hero-title">मीटर डाउन</h1>
-        <div className="hero__fm"><span>FM</span><i aria-hidden="true" /></div>
-        <p className="hero__tagline">मीटर नीचे। आवाज़ ऊपर।</p>
+        <div className="hero__fm" aria-hidden="true"><span>FM</span></div>
+        <p className="hero__tagline">दिल्ली की सड़कों का अपना रेडियो</p>
       </div>
-      <a className="scroll-cue" href="#queue">
-        <span>आज की सवारी</span>
-        <ArrowDown size={16} aria-hidden="true" />
-      </a>
-      <TailboardMarquee />
-    </section>
-  );
-}
-
-function TrackGrid({ activeId, onSelect }: { activeId: string; onSelect: (track: Track) => void }) {
-  return (
-    <section className="queue" id="queue" aria-labelledby="queue-title">
-      <header className="section-heading">
-        <div>
-          <p>रूट पर आगे</p>
-          <h2 id="queue-title">आज की सवारी</h2>
-        </div>
-        <span>{tracks.length.toString().padStart(2, "0")} गाने · नॉन-स्टॉप</span>
-      </header>
-      <div className="track-grid">
-        {tracks.map((track, index) => {
-          const active = track.id === activeId;
-          return (
-            <button
-              className="track-card"
-              type="button"
-              key={track.id}
-              onClick={() => onSelect(track)}
-              aria-label={`${track.title} by ${track.artist}${active ? ", currently selected" : ""}`}
-              aria-pressed={active}
-            >
-              <span className="track-card__index">{String(index + 1).padStart(2, "0")}</span>
-              <CoverArt palette={track.palette} />
-              <span className="track-card__copy">
-                <strong>{track.title}</strong>
-                <span>{track.artist}</span>
-              </span>
-              <span className="track-card__plays">{track.plays.toLocaleString("en-IN")} सवारी</span>
-              <span className="track-card__action" aria-hidden="true">{active ? "NOW" : "PLAY"}</span>
-            </button>
-          );
-        })}
+      <HornButton onHorn={onHorn} />
+      <ShayariLine />
+      <div className="view-toggle" role="group" aria-label="Auto view">
+        <button type="button" aria-pressed={view === "outside"} onClick={() => setView("outside")}>बाहर</button>
+        <button type="button" aria-pressed={view === "inside"} onClick={() => setView("inside")}>अंदर</button>
       </div>
+      <p className="view-status" aria-live="polite">{view === "inside" ? "अब ऑटो के अंदर का नज़ारा" : "अब ऑटो के बाहर का नज़ारा"}</p>
     </section>
   );
 }
 
 function formatTime(seconds: number) {
-  if (!Number.isFinite(seconds)) return "0:00";
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 }
 
-type PlayerProps = {
-  track: Track;
-  trackIndex: number;
-  isPlaying: boolean;
-  isLoading: boolean;
-  error: string;
-  currentTime: number;
-  duration: number;
-  volume: number;
-  onToggle: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
-  onSeek: (value: number) => void;
-  onVolume: (value: number) => void;
-};
-
-function NowPlayingDock({
-  track,
-  trackIndex,
-  isPlaying,
-  isLoading,
-  error,
-  currentTime,
-  duration,
-  volume,
-  onToggle,
-  onPrevious,
-  onNext,
-  onSeek,
-  onVolume,
-}: PlayerProps) {
-  const fare = (currentTime * 1.35).toFixed(2);
-
+function PlayerSkeleton() {
   return (
-    <aside className="player-dock" aria-label="Now playing">
-      <div className="player-track">
-        <CoverArt palette={track.palette} compact />
-        <div className="player-track__copy">
-          <span>NOW PLAYING · {String(trackIndex + 1).padStart(2, "0")}</span>
-          <strong>{track.title}</strong>
-          <small>{track.artist}</small>
-        </div>
+    <aside className="minimal-player minimal-player--loading" aria-label="Loading Meter Down FM player" aria-busy="true" role="status">
+      <span className="minimal-player__artwork player-skeleton__artwork skeleton-block" aria-hidden="true" />
+      <div className="minimal-player__body player-skeleton__body" aria-hidden="true">
+        <span className="player-skeleton__title skeleton-block" />
+        <span className="player-skeleton__artist skeleton-block" />
+        <span className="player-skeleton__progress skeleton-block" />
+        <div className="player-skeleton__time"><span className="skeleton-block" /><span className="skeleton-block" /></div>
       </div>
-
-      <div className="transport" aria-label="Playback controls">
-        <button type="button" onClick={onPrevious} aria-label="Previous song"><SkipBack size={18} /></button>
-        <button
-          className="play-button"
-          type="button"
-          onClick={onToggle}
-          aria-label={isPlaying ? "Pause radio" : "Play radio"}
-          disabled={isLoading}
-        >
-          {isLoading ? <span className="loading-bars" aria-hidden="true">•••</span> : isPlaying ? <Pause size={20} /> : <Play size={20} />}
-        </button>
-        <button type="button" onClick={onNext} aria-label="Next song"><SkipForward size={18} /></button>
+      <div className="minimal-player__controls player-skeleton__controls" aria-hidden="true">
+        <span className="player-skeleton__control player-skeleton__control--utility skeleton-block" />
+        <span className="player-skeleton__control skeleton-block" />
+        <span className="player-skeleton__control player-skeleton__control--play skeleton-block" />
+        <span className="player-skeleton__control skeleton-block" />
+        <span className="player-skeleton__control player-skeleton__control--utility skeleton-block" />
       </div>
-
-      <div className="fare-meter">
-        <div className="fare-meter__top">
-          <span>TRIP FARE</span>
-          <span className={isPlaying ? "hire-flag hire-flag--active" : "hire-flag"}>
-            {isPlaying ? "सवारी में" : "ख़ाली"}
-          </span>
-        </div>
-        <output className="fare-meter__value" aria-live="off"><span>₹</span>{fare}</output>
-        <div className="fare-meter__time">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-        <input
-          className="progress"
-          type="range"
-          min="0"
-          max={duration || 0}
-          step="0.1"
-          value={Math.min(currentTime, duration || 0)}
-          onChange={(event) => onSeek(Number(event.target.value))}
-          aria-label="Track progress"
-          aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
-          style={{ "--progress": `${duration ? (currentTime / duration) * 100 : 0}%` } as React.CSSProperties}
-        />
-      </div>
-
-      <div className="volume-control">
-        <button type="button" onClick={() => onVolume(volume > 0 ? 0 : 0.72)} aria-label={volume > 0 ? "Mute radio" : "Unmute radio"}>
-          {volume > 0 ? <Volume2 size={18} /> : <VolumeX size={18} />}
-        </button>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          value={volume}
-          onChange={(event) => onVolume(Number(event.target.value))}
-          aria-label="Volume"
-        />
-      </div>
-      <p className="player-status" role="status">{error || (isLoading ? "मीटर बंद है, अगला गाना लाया जा रहा है…" : "")}</p>
+      <span className="visually-hidden">Cloud playlist and playback controls are loading.</span>
     </aside>
   );
 }
 
-export function RadioExperience() {
-  const audioRef = useRef<HTMLAudioElement>(null);
+function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
+  playlist: CloudPlaylist | null;
+  catalogLoading: boolean;
+  catalogError: string;
+}) {
+  const youTubeHostRef = useRef<HTMLDivElement>(null);
+  const youTubePlayerRef = useRef<YouTubePlayer | null>(null);
+  const playlistToggleRef = useRef<HTMLButtonElement>(null);
+  const activeTrackRef = useRef<HTMLButtonElement>(null);
+  const changeTrackRef = useRef<(direction: -1 | 1, shouldAutoplay?: boolean) => void>(() => undefined);
+  const autoplayNextRef = useRef(false);
   const [trackIndex, setTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPlaybackLoading, setIsPlaybackLoading] = useState(false);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+  const [isShuffled, setIsShuffled] = useState(false);
+  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.72);
   const [error, setError] = useState("");
-  const currentTrack = tracks[trackIndex];
+  const tracks = playlist?.tracks ?? [];
+  const track = tracks[trackIndex];
 
-  const changeTrack = useCallback((nextIndex: number, autoplay = isPlaying) => {
-    const boundedIndex = (nextIndex + tracks.length) % tracks.length;
-    setTrackIndex(boundedIndex);
+  const changeTrack = useCallback((direction: -1 | 1, shouldAutoplay = isPlaying) => {
+    if (!tracks.length) return;
+    autoplayNextRef.current = shouldAutoplay;
     setCurrentTime(0);
     setDuration(0);
     setError("");
-    if (autoplay) setIsLoading(true);
-  }, [isPlaying]);
+    setTrackIndex((current) => {
+      if (isShuffled && tracks.length > 1) {
+        let next = current;
+        while (next === current) next = Math.floor(Math.random() * tracks.length);
+        return next;
+      }
+      return (current + direction + tracks.length) % tracks.length;
+    });
+  }, [isPlaying, isShuffled, tracks.length]);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.load();
-    if (isPlaying) {
-      audio.play().then(() => setIsLoading(false)).catch(() => {
-        setIsPlaying(false);
-        setIsLoading(false);
-        setError("गाना चल नहीं पाया — एक बार फिर Play दबाएँ।");
-      });
-    }
-    // Track changes are the only intended trigger for reloading media.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackIndex]);
-
-  const togglePlayback = async () => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  const selectTrack = (index: number) => {
     setError("");
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
+    setIsPlaylistOpen(false);
+
+    if (index === trackIndex) {
+      if (!isPlaying) {
+        setIsPlaybackLoading(true);
+        if (youTubePlayerRef.current && isPlayerReady) {
+          youTubePlayerRef.current.playVideo();
+        } else {
+          autoplayNextRef.current = true;
+        }
+      }
       return;
     }
-    setIsLoading(true);
-    try {
-      await audio.play();
-      setIsPlaying(true);
-    } catch {
-      setError("गाना चल नहीं पाया — नेटवर्क देखकर फिर Play दबाएँ।");
-    } finally {
-      setIsLoading(false);
-    }
+
+    autoplayNextRef.current = true;
+    setIsPlaybackLoading(true);
+    setCurrentTime(0);
+    setDuration(0);
+    setTrackIndex(index);
   };
 
-  const selectTrack = (track: Track) => {
-    const nextIndex = tracks.findIndex((item) => item.id === track.id);
-    if (nextIndex === trackIndex) {
-      void togglePlayback();
+  const togglePlaylist = () => {
+    setIsPlaylistOpen((current) => !current);
+  };
+
+  useEffect(() => {
+    changeTrackRef.current = changeTrack;
+  }, [changeTrack]);
+
+  useEffect(() => {
+    if (!track || track.sourceProvider !== "youtube" || !youTubeHostRef.current) return;
+    let cancelled = false;
+    setIsPlaybackLoading(true);
+    setIsPlayerReady(false);
+
+    void loadYouTubeApi()
+      .then((YT) => {
+        if (cancelled || !youTubeHostRef.current) return;
+        const player = new YT.Player(youTubeHostRef.current, {
+          videoId: track.sourceId,
+          width: "100%",
+          height: "100%",
+          playerVars: {
+            controls: 0,
+            enablejsapi: 1,
+            fs: 0,
+            playsinline: 1,
+            rel: 0,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: ({ target }) => {
+              if (cancelled) return;
+              youTubePlayerRef.current = target;
+              setIsPlayerReady(true);
+              setIsPlaybackLoading(false);
+            },
+            onStateChange: ({ data, target }) => {
+              if (data === YT.PlayerState.PLAYING) {
+                setIsPlaying(true);
+                setIsPlaybackLoading(false);
+                setDuration(target.getDuration() || 0);
+              } else if (data === YT.PlayerState.PAUSED || data === YT.PlayerState.CUED) {
+                setIsPlaying(false);
+                setIsPlaybackLoading(false);
+              } else if (data === YT.PlayerState.BUFFERING) {
+                setIsPlaybackLoading(true);
+              } else if (data === YT.PlayerState.ENDED) {
+                setIsPlaying(false);
+                changeTrackRef.current(1, true);
+              }
+            },
+            onError: () => {
+              setIsPlaybackLoading(false);
+              setIsPlaying(false);
+              setError("This video cannot be played in the embedded YouTube player. Try the next track.");
+            },
+          },
+        });
+        youTubePlayerRef.current = player;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsPlaybackLoading(false);
+        setError("The official YouTube player could not be loaded.");
+      });
+
+    return () => {
+      cancelled = true;
+      youTubePlayerRef.current?.destroy();
+      youTubePlayerRef.current = null;
+    };
+    // The player persists while the selected YouTube track changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(track && track.sourceProvider === "youtube")]);
+
+  useEffect(() => {
+    if (!isPlaylistOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setIsPlaylistOpen(false);
+      playlistToggleRef.current?.focus();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPlaylistOpen]);
+
+  useEffect(() => {
+    if (!isPlaylistOpen) return;
+    const frame = window.requestAnimationFrame(() => activeTrackRef.current?.scrollIntoView({ block: "nearest" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [isPlaylistOpen]);
+
+  useEffect(() => {
+    if (!track || track.sourceProvider !== "youtube") return;
+    const player = youTubePlayerRef.current;
+    if (!player || !isPlayerReady) return;
+    if (autoplayNextRef.current) {
+      autoplayNextRef.current = false;
+      player.loadVideoById(track.sourceId);
     } else {
-      setIsPlaying(true);
-      changeTrack(nextIndex, true);
+      player.cueVideoById(track.sourceId);
     }
+  }, [isPlayerReady, track]);
+
+  useEffect(() => {
+    if (!isPlayerReady) return;
+    const interval = window.setInterval(() => {
+      const player = youTubePlayerRef.current;
+      if (!player) return;
+      setCurrentTime(player.getCurrentTime() || 0);
+      setDuration(player.getDuration() || (track?.durationMs ?? 0) / 1_000);
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [isPlayerReady, track?.durationMs]);
+
+  const togglePlayback = () => {
+    const player = youTubePlayerRef.current;
+    if (!player || !track || track.sourceProvider !== "youtube") return;
+    setError("");
+
+    if (isPlaying) {
+      player.pauseVideo();
+      return;
+    }
+    player.playVideo();
   };
 
-  const updateVolume = (nextVolume: number) => {
-    setVolume(nextVolume);
-    if (audioRef.current) audioRef.current.volume = nextVolume;
+  const seekTo = (value: number) => {
+    const player = youTubePlayerRef.current;
+    if (!player) return;
+    player.seekTo(value, true);
+    setCurrentTime(value);
   };
+
+  if (catalogLoading) return <PlayerSkeleton />;
+
+  return (
+    <>
+      {track?.sourceProvider === "youtube" ? (
+        <div className="youtube-playback-engine" aria-hidden="true">
+          <div ref={youTubeHostRef} />
+        </div>
+      ) : null}
+
+      {isPlaylistOpen ? (
+        <section className="playlist-panel" id="active-playlist-panel" aria-labelledby="active-playlist-title">
+          <header className="playlist-panel__header">
+            <div>
+              <strong id="active-playlist-title">{playlist?.title ?? "Playlist"}</strong>
+              <span>{tracks.length} tracks</span>
+            </div>
+            <span>Choose a track</span>
+          </header>
+          <ol className="playlist-panel__list">
+            {tracks.map((item, index) => (
+              <li key={item.id}>
+                <button
+                  ref={index === trackIndex ? activeTrackRef : undefined}
+                  type="button"
+                  className={index === trackIndex ? "is-active" : ""}
+                  aria-current={index === trackIndex ? "true" : undefined}
+                  onClick={() => selectTrack(index)}
+                >
+                  <span className="playlist-panel__number">{index + 1}</span>
+                  <strong>{item.title}</strong>
+                  <span className="playlist-panel__artist">{item.artist}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
+      <aside className="minimal-player" aria-label="Meter Down FM YouTube player">
+
+      {track?.artworkUrl && track.sourceUrl ? (
+        <a
+          className="minimal-player__artwork"
+          href={track.sourceUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`View metadata source for ${track.title} by ${track.artist}`}
+          style={{ backgroundImage: `url(${track.artworkUrl})` }}
+        />
+      ) : <span className="minimal-player__artwork minimal-player__artwork--fallback"><Music2 aria-hidden="true" /></span>}
+
+      <div className="minimal-player__body">
+        <div className="minimal-player__copy" aria-live="polite">
+          <strong>{track?.title ?? (catalogLoading ? "क्लाउड प्लेलिस्ट आ रही है…" : "Meter Down FM")}</strong>
+          <small>{track?.artist ?? playlist?.title ?? "Cloud playlist not configured"}</small>
+        </div>
+        <input
+          className="minimal-player__progress"
+          type="range"
+          min="0"
+          max={duration || (track?.durationMs ?? 0) / 1_000}
+          step="0.1"
+          value={Math.min(currentTime, duration || (track?.durationMs ?? 0) / 1_000)}
+          onChange={(event) => seekTo(Number(event.target.value))}
+          disabled={!track || !isPlayerReady}
+          aria-label="Track progress"
+          aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration || (track?.durationMs ?? 0) / 1_000)}`}
+          style={{ "--progress": `${duration ? (currentTime / duration) * 100 : 0}%` } as React.CSSProperties}
+        />
+        <div className="minimal-player__time">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration || (track?.durationMs ?? 0) / 1_000)}</span>
+        </div>
+      </div>
+
+      <div className="minimal-player__controls" aria-label="Playback controls">
+        <button
+          className={`player-control player-control--utility ${isShuffled ? "is-active" : ""}`}
+          type="button"
+          onClick={() => setIsShuffled((current) => !current)}
+          aria-label={isShuffled ? "Turn shuffle off" : "Turn shuffle on"}
+          aria-pressed={isShuffled}
+        ><Shuffle size={15} /></button>
+        <button className="player-control player-control--secondary" type="button" onClick={() => changeTrack(-1)} disabled={!track} aria-label="Previous track"><SkipBack size={17} /></button>
+        <button className="player-control player-control--play" type="button" onClick={togglePlayback} disabled={!track || !isPlayerReady || isPlaybackLoading || catalogLoading} aria-label={isPlaying ? "Pause" : "Play"}>
+          {isPlaybackLoading || catalogLoading ? <span className="player-loader" aria-hidden="true" /> : isPlaying ? <Pause size={20} /> : <Play className="play-icon" size={20} />}
+        </button>
+        <button className="player-control player-control--secondary" type="button" onClick={() => changeTrack(1)} disabled={!track} aria-label="Next track"><SkipForward size={17} /></button>
+        <button
+          ref={playlistToggleRef}
+          className={`player-control player-control--utility ${isPlaylistOpen ? "is-active" : ""}`}
+          type="button"
+          onClick={togglePlaylist}
+          aria-label={isPlaylistOpen ? "Close playlist" : "Open playlist"}
+          aria-expanded={isPlaylistOpen}
+          aria-controls="active-playlist-panel"
+          disabled={!tracks.length}
+        ><ListMusic size={16} /></button>
+      </div>
+
+      <p className="minimal-player__status" role="status">{error || catalogError}</p>
+      </aside>
+    </>
+  );
+}
+
+export function RadioExperience() {
+  const hornContextRef = useRef<AudioContext | null>(null);
+  const [playlist, setPlaylist] = useState<CloudPlaylist | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    fetch("/api/playlists/active", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const payload = (await response.json()) as { playlist?: CloudPlaylist | null; error?: string };
+        if (!response.ok || !payload.playlist) throw new Error(payload.error || "No active playlist.");
+        if (!active) return;
+        setPlaylist(payload.playlist);
+        setCatalogError(payload.playlist.tracks.length ? "" : "Import and activate a YouTube playlist to begin playback.");
+      })
+      .catch((requestError: unknown) => {
+        if (requestError instanceof DOMException && requestError.name === "AbortError") return;
+        if (!active) return;
+        setCatalogError("रेडियो अभी तैयार हो रहा है।");
+      })
+      .finally(() => active && setCatalogLoading(false));
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  const playHorn = useCallback(() => {
+    const context = hornContextRef.current ?? new AudioContext();
+    hornContextRef.current = context;
+    if (context.state === "suspended") void context.resume();
+
+    [0, 0.18].forEach((offset, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = context.currentTime + offset;
+      oscillator.type = "square";
+      oscillator.frequency.setValueAtTime(index === 0 ? 420 : 520, start);
+      oscillator.frequency.exponentialRampToValueAtTime(index === 0 ? 500 : 610, start + 0.11);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.086, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.14);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.15);
+    });
+  }, []);
 
   return (
     <>
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      <main id="main-content">
-        <Hero />
-        <TrackGrid activeId={currentTrack.id} onSelect={selectTrack} />
-        <footer className="site-footer">
-          <p><strong>मीटर डाउन FM</strong> · दिल्ली से, दिल वालों के लिए।</p>
-          <p>Demo station · fictional tracks · placeholder audio</p>
-        </footer>
+      <main id="main-content" className="radio-room">
+        <Hero onHorn={playHorn} playlist={playlist} catalogLoading={catalogLoading} />
       </main>
-
-      <audio
-        ref={audioRef}
-        src={currentTrack.audioUrl}
-        preload="metadata"
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onLoadedMetadata={(event) => {
-          setDuration(event.currentTarget.duration);
-          event.currentTarget.volume = volume;
-          setIsLoading(false);
-        }}
-        onWaiting={() => setIsLoading(true)}
-        onPlaying={() => { setIsPlaying(true); setIsLoading(false); }}
-        onPause={() => setIsPlaying(false)}
-        onEnded={() => changeTrack(trackIndex + 1, true)}
-        onError={() => { setIsLoading(false); setIsPlaying(false); setError("यह गाना रास्ते में अटक गया — अगली सवारी चुनें।"); }}
-      />
-
-      <NowPlayingDock
-        track={currentTrack}
-        trackIndex={trackIndex}
-        isPlaying={isPlaying}
-        isLoading={isLoading}
-        error={error}
-        currentTime={currentTime}
-        duration={duration}
-        volume={volume}
-        onToggle={() => void togglePlayback()}
-        onPrevious={() => changeTrack(trackIndex - 1)}
-        onNext={() => changeTrack(trackIndex + 1)}
-        onSeek={(value) => { if (audioRef.current) audioRef.current.currentTime = value; setCurrentTime(value); }}
-        onVolume={updateVolume}
-      />
+      <MinimalPlayer key={playlist?.id ?? "cloud-player"} playlist={playlist} catalogLoading={catalogLoading} catalogError={catalogError} />
     </>
   );
 }

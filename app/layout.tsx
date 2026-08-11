@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "@fontsource/yatra-one/400.css";
+import "@fontsource/baloo-2/800.css";
 import "@fontsource/khand/500.css";
 import "@fontsource/khand/600.css";
 import "@fontsource/khand/700.css";
