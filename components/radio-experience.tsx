@@ -345,6 +345,9 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
   const changeTrackRef = useRef<(direction: -1 | 1, shouldAutoplay?: boolean) => void>(() => undefined);
   const autoplayNextRef = useRef(false);
   const [trackIndex, setTrackIndex] = useState(() => getInitialTrackIndex(playlist));
+  const trackIndexRef = useRef(trackIndex);
+  const shuffleHistoryRef = useRef<number[]>([trackIndex]);
+  const shuffleHistoryCursorRef = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlaybackLoading, setIsPlaybackLoading] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
@@ -357,6 +360,11 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
   const track = tracks[trackIndex];
   const credits = track ? getTrackCredits(track) : null;
   const lastTrackStorageKey = playlist ? `${LAST_TRACK_STORAGE_PREFIX}:${playlist.id}` : null;
+
+  const updateTrackIndex = useCallback((index: number) => {
+    trackIndexRef.current = index;
+    setTrackIndex(index);
+  }, []);
 
   useEffect(() => {
     if (!lastTrackStorageKey || !track) return;
@@ -374,15 +382,40 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
     setCurrentTime(0);
     setDuration(0);
     setError("");
-    setTrackIndex((current) => {
-      if (isShuffled && tracks.length > 1) {
-        let next = current;
-        while (next === current) next = Math.floor(Math.random() * tracks.length);
-        return next;
-      }
-      return (current + direction + tracks.length) % tracks.length;
-    });
-  }, [isPlaying, isShuffled, tracks.length]);
+    const current = trackIndexRef.current;
+
+    if (!isShuffled || tracks.length < 2) {
+      updateTrackIndex((current + direction + tracks.length) % tracks.length);
+      return;
+    }
+
+    const history = shuffleHistoryRef.current;
+    let cursor = shuffleHistoryCursorRef.current;
+    if (direction === -1 && cursor > 0) {
+      cursor -= 1;
+      shuffleHistoryCursorRef.current = cursor;
+      updateTrackIndex(history[cursor]);
+      return;
+    }
+    if (direction === 1 && cursor < history.length - 1) {
+      cursor += 1;
+      shuffleHistoryCursorRef.current = cursor;
+      updateTrackIndex(history[cursor]);
+      return;
+    }
+
+    let next = current;
+    while (next === current) next = Math.floor(Math.random() * tracks.length);
+    if (direction === -1) {
+      history.unshift(next);
+      shuffleHistoryCursorRef.current = 0;
+    } else {
+      history.splice(cursor + 1);
+      history.push(next);
+      shuffleHistoryCursorRef.current = history.length - 1;
+    }
+    updateTrackIndex(next);
+  }, [isPlaying, isShuffled, tracks.length, updateTrackIndex]);
 
   const selectTrack = (index: number) => {
     setError("");
@@ -404,7 +437,18 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
     setIsPlaybackLoading(true);
     setCurrentTime(0);
     setDuration(0);
-    setTrackIndex(index);
+    if (isShuffled) {
+      shuffleHistoryRef.current = [index];
+      shuffleHistoryCursorRef.current = 0;
+    }
+    updateTrackIndex(index);
+  };
+
+  const toggleShuffle = () => {
+    if (tracks.length < 2) return;
+    shuffleHistoryRef.current = [trackIndexRef.current];
+    shuffleHistoryCursorRef.current = 0;
+    setIsShuffled(!isShuffled);
   };
 
   const togglePlaylist = () => {
@@ -552,14 +596,11 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
       ) : null}
 
       {isPlaylistOpen ? (
-        <section className="playlist-panel" id="active-playlist-panel" aria-labelledby="active-playlist-title">
-          <header className="playlist-panel__header">
-            <div>
-              <strong id="active-playlist-title">{playlist?.title ?? "Playlist"}</strong>
-              <span>{tracks.length} tracks</span>
-            </div>
-            <span>Choose a track</span>
-          </header>
+        <section
+          className="playlist-panel"
+          id="active-playlist-panel"
+          aria-label={`${playlist?.title ?? "Playlist"} track list`}
+        >
           <ol className="playlist-panel__list">
             {tracks.map((item, index) => (
               <li key={item.id}>
@@ -643,9 +684,11 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
         <button
           className={`player-control player-control--utility ${isShuffled ? "is-active" : ""}`}
           type="button"
-          onClick={() => setIsShuffled((current) => !current)}
+          onClick={toggleShuffle}
+          disabled={tracks.length < 2}
           aria-label={isShuffled ? "Turn shuffle off" : "Turn shuffle on"}
           aria-pressed={isShuffled}
+          title={isShuffled ? "Shuffle on" : "Shuffle off"}
         ><Shuffle size={14} strokeWidth={2.4} /></button>
         <button className="player-control player-control--secondary" type="button" onClick={() => changeTrack(-1)} disabled={!track} aria-label="Previous track"><SkipBack size={14} strokeWidth={2.4} /></button>
         <button className="player-control player-control--play" type="button" onClick={togglePlayback} disabled={!track || !isPlayerReady || isPlaybackLoading || catalogLoading} aria-label={isPlaying ? "Pause" : "Play"}>

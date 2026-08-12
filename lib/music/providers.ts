@@ -172,6 +172,7 @@ async function youtubeJson<T>(path: string, parameters: Record<string, string>) 
 }
 
 async function importYouTube(reference: PlaylistReference): Promise<NormalizedPlaylist> {
+  const maxImportedTracks = 200;
   const details = await youtubeJson<{ items?: Array<{ snippet?: YouTubeSnippet }> }>("playlists", {
     part: "snippet",
     id: reference.id,
@@ -181,6 +182,7 @@ async function importYouTube(reference: PlaylistReference): Promise<NormalizedPl
   if (!playlistSnippet) throw new Error("The YouTube playlist is private, unavailable, or does not exist.");
 
   const tracks: NormalizedTrack[] = [];
+  const seenVideoIds = new Set<string>();
   let pageToken = "";
   do {
     const page = await youtubeJson<{
@@ -197,6 +199,8 @@ async function importYouTube(reference: PlaylistReference): Promise<NormalizedPl
       const snippet = item.snippet;
       const videoId = snippet?.resourceId?.videoId;
       if (!videoId || !snippet?.title || snippet.title === "Deleted video" || snippet.title === "Private video") continue;
+      if (seenVideoIds.has(videoId)) continue;
+      seenVideoIds.add(videoId);
       const singer = youtubeCredit(snippet.description, "singer");
       const writer = youtubeCredit(snippet.description, "writer");
       tracks.push({
@@ -211,7 +215,7 @@ async function importYouTube(reference: PlaylistReference): Promise<NormalizedPl
       });
     }
     pageToken = page.nextPageToken ?? "";
-  } while (pageToken && tracks.length < 1_000);
+  } while (pageToken && tracks.length < maxImportedTracks);
 
   return {
     title: playlistSnippet.title?.trim() || "YouTube playlist",
@@ -220,7 +224,7 @@ async function importYouTube(reference: PlaylistReference): Promise<NormalizedPl
     sourceProvider: "youtube",
     sourceUrl: reference.url,
     sourceId: reference.id,
-    tracks: tracks.slice(0, 1_000),
+    tracks: tracks.slice(0, maxImportedTracks),
   };
 }
 

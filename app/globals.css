@@ -187,7 +187,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   backdrop-filter: none;
   font-family: var(--font-meter);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.07em;
 }
@@ -509,26 +509,25 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   z-index: 10;
   top: 52%;
   left: 50%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  width: min(720px, calc(100vw - 32px));
+  display: block;
+  width: min(528px, calc(100vw - 48px));
   height: min(46vh, 420px);
   min-height: 240px;
   overflow: hidden;
   color: var(--text);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.075), transparent 38%),
-    rgba(7, 10, 16, 0.56);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 30px;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.045), transparent 42%),
+    rgba(7, 10, 16, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 24px;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 1px 0 rgba(255, 255, 255, 0.16) inset,
     0 -1px 0 rgba(255, 255, 255, 0.035) inset,
-    0 24px 64px rgba(0, 0, 0, 0.42),
-    0 48px 120px rgba(0, 0, 0, 0.2);
+    0 24px 64px rgba(0, 0, 0, 0.28),
+    0 48px 120px rgba(0, 0, 0, 0.12);
   transform: translate(-50%, -50%);
-  -webkit-backdrop-filter: blur(34px) saturate(155%);
-  backdrop-filter: blur(34px) saturate(155%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  backdrop-filter: blur(24px) saturate(145%);
   animation: playlist-materialize 260ms var(--ease-out) both;
 }
 .playlist-panel__header {
@@ -538,15 +537,15 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   gap: 24px;
   min-height: 76px;
   padding: 16px 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
-  box-shadow: 0 1px rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.006));
+  box-shadow: 0 1px rgba(255, 255, 255, 0.07);
 }
 .playlist-panel__header > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .playlist-panel__header strong {
   overflow: hidden;
   font-family: var(--font-heading);
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 500;
   letter-spacing: -0.025em;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -556,13 +555,14 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   color: rgba(245, 245, 247, 0.64);
   font-family: var(--font-meter);
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.045em;
   line-height: 1.35;
 }
 .playlist-panel__list {
   margin: 0;
-  padding: 10px 12px 14px;
+  height: 100%;
+  padding: 6px 8px 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--player-track) transparent;
@@ -575,8 +575,8 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 50px;
-  padding: 9px 12px;
+  min-height: 40px;
+  padding: 8px 12px;
   cursor: pointer;
   color: var(--text);
   background: transparent;
@@ -587,15 +587,13 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 .playlist-panel__list button:active { transform: scale(0.99); }
 .playlist-panel__list button.is-active {
-  background: linear-gradient(100deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.045));
-  box-shadow:
-    3px 0 0 rgba(255, 255, 255, 0.94) inset,
-    0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  background: linear-gradient(100deg, rgba(164, 176, 202, 0.34), rgba(105, 119, 148, 0.2));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.14) inset;
 }
 .playlist-panel__number {
   color: rgba(245, 245, 247, 0.58);
   font-family: var(--font-meter);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.025em;
 }
@@ -603,15 +601,15 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 .playlist-panel__artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .playlist-panel__list strong {
   font-family: var(--font-heading);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   letter-spacing: -0.012em;
   line-height: 1.35;
 }
 .playlist-panel__artist {
   color: rgba(245, 245, 247, 0.66);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.005em;
   line-height: 1.35;
   text-align: right;
@@ -776,14 +774,15 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   transition: color 100ms var(--ease-out), background-color 100ms var(--ease-out), transform 100ms var(--ease-out), opacity 100ms var(--ease-out);
 }
 .player-control:active { transform: scale(0.92); }
-.player-control:disabled { cursor: wait; opacity: 0.5; }
+.player-control:disabled { cursor: not-allowed; opacity: 0.5; }
 .player-control--secondary,
 .player-control--queue { color: rgba(255, 255, 255, 0.84); }
-.player-control--utility { color: #fff; background: rgba(255, 255, 255, 0.16); }
-.player-control--utility,
-.player-control.is-active { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset; }
-.player-control.is-active { color: var(--player-control-text); background: var(--player-control-surface); }
-.player-control.is-active { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16) inset; }
+.player-control--utility { color: rgba(255, 255, 255, 0.72); background: transparent; box-shadow: none; }
+.player-control.is-active {
+  color: var(--player-hot);
+  background: rgba(255, 96, 69, 0.16);
+  box-shadow: 0 0 0 1px rgba(255, 126, 102, 0.34) inset;
+}
 .player-control--play { width: 42px; height: 42px; color: var(--player-play-fg); background: var(--player-play-bg); box-shadow: 0 1px 0 #fff inset, 0 5px 14px rgba(60, 17, 13, 0.26); }
 .play-icon { transform: translateX(1px); }
 .player-loader { width: 18px; height: 18px; border: 2px solid rgba(10, 10, 10, 0.2); border-top-color: var(--player-play-fg); border-radius: 50%; animation: player-spin 700ms linear infinite; }
@@ -828,10 +827,12 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .hero__image { object-position: 52% center; }
 
   .playlist-panel {
-    top: 51%;
-    width: calc(100vw - 24px);
-    height: min(46vh, 400px);
+    top: 8px;
+    width: calc(100vw - 36px);
+    height: min(420px, calc(100vh - 220px));
+    min-height: 280px;
     border-radius: 24px;
+    transform: translateX(-50%);
   }
   .playlist-panel__list button { grid-template-columns: 28px minmax(0, 1fr) minmax(76px, 120px); gap: 8px; padding-inline: 8px; }
 
