@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "@fontsource/baloo-2/800.css";
 import "@fontsource/khand/500.css";
 import "@fontsource/khand/600.css";
@@ -13,12 +15,19 @@ export const metadata: Metadata = {
   title: "मीटर डाउन FM — Dilli ki sadkon ka radio",
   description:
     "दिल्ली की सड़कों के लिए एक गर्म, साझा रेडियो — meter down, music on.",
+  other: {
+    google: "notranslate",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="hi">
-      <body>{children}</body>
+    <html lang="hi" translate="no">
+      <body suppressHydrationWarning>
+        {children}
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }
