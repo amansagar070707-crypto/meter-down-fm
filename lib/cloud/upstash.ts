@@ -50,6 +50,8 @@ async function redisPipeline<T>(commands: Array<Array<string | number>>) {
 
 const PRESENCE_INDEX = "presence:listeners";
 const PRESENCE_TTL_SECONDS = 90;
+const VISIT_TOTAL_KEY = "analytics:visits:total";
+const VISIT_SESSION_TTL_SECONDS = 86_400;
 
 export async function heartbeatListener(sessionId: string) {
   const now = Date.now();
@@ -70,9 +72,27 @@ export async function countListeners(now = Date.now()) {
   return Number(count) || 0;
 }
 
+export async function recordVisit(sessionId: string) {
+  const firstVisit = await redisRequest<string | null>("", [
+    "SET",
+    `analytics:visit:${sessionId}`,
+    "1",
+    "NX",
+    "EX",
+    VISIT_SESSION_TTL_SECONDS,
+  ]);
+  if (firstVisit === "OK") await redisRequest<number>("", ["INCR", VISIT_TOTAL_KEY]);
+  const total = await redisRequest<number>("", ["GET", VISIT_TOTAL_KEY]);
+  return Number(total) || 0;
+}
+
+export async function getVisitTotal() {
+  const total = await redisRequest<number>("", ["GET", VISIT_TOTAL_KEY]);
+  return Number(total) || 0;
+}
+
 export async function consumeRateLimit(key: string, limit: number, windowSeconds: number) {
   const count = await redisRequest<number>("", ["INCR", key]);
   if (count === 1) await redisRequest("", ["EXPIRE", key, windowSeconds]);
   return count <= limit;
 }
-

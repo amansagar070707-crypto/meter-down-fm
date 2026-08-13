@@ -12,9 +12,9 @@ import "@fontsource/jetbrains-mono/500.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "मीटर डाउन FM — Dilli ki sadkon ka radio",
+  title: "मीटर डाउन FM — Har auto wale ka radio",
   description:
-    "दिल्ली की सड़कों के लिए एक गर्म, साझा रेडियो — meter down, music on.",
+    "हर ऑटो वाले के लिए एक गर्म, साझा रेडियो — meter down, music on.",
   other: {
     google: "notranslate",
   },

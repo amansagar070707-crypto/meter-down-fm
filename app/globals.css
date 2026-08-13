@@ -217,6 +217,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   box-shadow: 0 0 0 3px rgba(104, 185, 112, 0.14), 0 0 12px rgba(104, 185, 112, 0.72);
   animation: live-pulse 1.8s ease-out infinite;
 }
+.live-dot.is-pending { opacity: 0.45; box-shadow: none; animation: none; }
 
 .platform-links { display: flex; justify-self: end; }
 .platform-links--loading { align-items: center; min-height: 44px; }
@@ -300,6 +301,19 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 .horn-button > span:last-child { display: flex; flex-direction: column; align-items: flex-start; }
 .horn-button strong { font-family: var(--font-heading); font-size: 15px; font-weight: 700; line-height: 1; }
 .horn-button small { margin-top: 3px; color: var(--muted); font-family: var(--font-meter); font-size: 8px; letter-spacing: 0.06em; }
+.horn-button { display: none; }
+
+.visit-counter {
+  position: absolute;
+  right: clamp(20px, 4vw, 64px);
+  bottom: 28px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: rgba(245, 245, 247, 0.82);
+}
+.visit-counter strong { color: var(--text); font-family: var(--font-meter); font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.visit-counter span { color: var(--muted); font-family: var(--font-heading); font-size: 11px; font-weight: 400; letter-spacing: 0.02em; }
 
 .shayari-line {
   position: absolute;
@@ -509,7 +523,8 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   z-index: 10;
   top: 52%;
   left: 50%;
-  display: block;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   width: min(528px, calc(100vw - 48px));
   height: min(46vh, 420px);
   min-height: 240px;
@@ -541,6 +556,48 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   box-shadow: 0 1px rgba(255, 255, 255, 0.07);
 }
 .playlist-panel__header > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.playlist-panel__close {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  place-items: center;
+  cursor: pointer;
+  color: rgba(245, 245, 247, 0.78);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  transition: color 120ms var(--ease-out), background-color 120ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.playlist-panel__close:active { transform: scale(0.94); }
+.playlist-panel__search {
+  display: flex;
+  height: 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 14px 4px;
+  padding: 0 12px;
+  color: rgba(245, 245, 247, 0.58);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+}
+.playlist-panel__search:focus-within {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+.playlist-panel__search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 13px;
+}
+.playlist-panel__search input::placeholder { color: rgba(245, 245, 247, 0.5); }
 .playlist-panel__header strong {
   overflow: hidden;
   font-family: var(--font-heading);
@@ -561,7 +618,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 .playlist-panel__list {
   margin: 0;
-  height: 100%;
+  min-height: 0;
   padding: 6px 8px 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -569,6 +626,12 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   scrollbar-width: thin;
 }
 .playlist-panel__list li { list-style: none; }
+.playlist-panel__empty {
+  padding: 24px 16px;
+  color: rgba(245, 245, 247, 0.68);
+  font-size: 13px;
+  text-align: center;
+}
 .playlist-panel__list button {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) minmax(100px, 190px);
@@ -807,6 +870,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .horn-button { bottom: 178px; }
   .view-toggle { bottom: 182px; }
   .shayari-line { bottom: 244px; }
+  .visit-counter { right: 18px; bottom: 28px; }
 }
 
 @media (max-width: 760px) {
@@ -860,6 +924,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .view-toggle { right: 12px; bottom: 156px; }
   .view-toggle button { min-width: 60px; padding-inline: 10px; }
   .shayari-line { bottom: 214px; max-width: calc(100vw - 24px); font-size: 14px; }
+  .visit-counter { right: 18px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
   .shayari-line p { max-width: calc(100vw - 76px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
@@ -888,6 +953,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .horn-button { bottom: 45vh; }
   .view-toggle { bottom: 180px; }
   .shayari-line { bottom: 214px; }
+  .visit-counter { right: 18px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
 
   .playlist-panel__header > span { display: none; }
   .playlist-panel__list button { grid-template-columns: 28px minmax(0, 1fr); }
