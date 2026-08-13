@@ -779,9 +779,9 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 .player-control--queue { color: rgba(255, 255, 255, 0.84); }
 .player-control--utility { color: rgba(255, 255, 255, 0.72); background: transparent; box-shadow: none; }
 .player-control.is-active {
-  color: var(--player-hot);
-  background: rgba(255, 96, 69, 0.16);
-  box-shadow: 0 0 0 1px rgba(255, 126, 102, 0.34) inset;
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.34) inset;
 }
 .player-control--play { width: 42px; height: 42px; color: var(--player-play-fg); background: var(--player-play-bg); box-shadow: 0 1px 0 #fff inset, 0 5px 14px rgba(60, 17, 13, 0.26); }
 .play-icon { transform: translateX(1px); }
@@ -827,12 +827,14 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .hero__image { object-position: 52% center; }
 
   .playlist-panel {
-    top: 8px;
+    top: auto;
+    bottom: calc(142px + env(safe-area-inset-bottom, 0px));
     width: calc(100vw - 36px);
-    height: min(420px, calc(100vh - 220px));
-    min-height: 280px;
+    height: min(420px, calc(100dvh - 150px - env(safe-area-inset-bottom, 0px)));
+    min-height: min(280px, calc(100dvh - 150px - env(safe-area-inset-bottom, 0px)));
     border-radius: 24px;
     transform: translateX(-50%);
+    animation-name: playlist-materialize-mobile;
   }
   .playlist-panel__list button { grid-template-columns: 28px minmax(0, 1fr) minmax(76px, 120px); gap: 8px; padding-inline: 8px; }
 
@@ -862,6 +864,12 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 
 @media (max-width: 520px) {
+  .playlist-panel {
+    bottom: calc(205px + env(safe-area-inset-bottom, 0px));
+    height: min(420px, calc(100dvh - 213px - env(safe-area-inset-bottom, 0px)));
+    min-height: min(280px, calc(100dvh - 213px - env(safe-area-inset-bottom, 0px)));
+  }
+
   .minimal-player {
     grid-template-columns: 60px minmax(0, 1fr);
     grid-template-rows: auto auto;
@@ -902,6 +910,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   50% { box-shadow: 0 0 0 7px rgba(104, 185, 112, 0), 0 0 18px rgba(104, 185, 112, 0.92); }
 }
 @keyframes playlist-materialize { from { opacity: 0; transform: translate(-50%, -48%) scale(0.985); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes playlist-materialize-mobile { from { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.985); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
 @keyframes player-spin { to { transform: rotate(360deg); } }
 @keyframes cd-spin { to { transform: rotate(360deg); } }
 @keyframes skeleton-sweep { to { transform: translateX(110%); } }

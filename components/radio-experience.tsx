@@ -341,6 +341,7 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
   const youTubeHostRef = useRef<HTMLDivElement>(null);
   const youTubePlayerRef = useRef<YouTubePlayer | null>(null);
   const playlistToggleRef = useRef<HTMLButtonElement>(null);
+  const playlistPanelRef = useRef<HTMLElement>(null);
   const activeTrackRef = useRef<HTMLButtonElement>(null);
   const changeTrackRef = useRef<(direction: -1 | 1, shouldAutoplay?: boolean) => void>(() => undefined);
   const autoplayNextRef = useRef(false);
@@ -539,6 +540,18 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
 
   useEffect(() => {
     if (!isPlaylistOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (playlistPanelRef.current?.contains(target) || playlistToggleRef.current?.contains(target)) return;
+      setIsPlaylistOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isPlaylistOpen]);
+
+  useEffect(() => {
+    if (!isPlaylistOpen) return;
     const frame = window.requestAnimationFrame(() => activeTrackRef.current?.scrollIntoView({ block: "nearest" }));
     return () => window.cancelAnimationFrame(frame);
   }, [isPlaylistOpen]);
@@ -597,6 +610,7 @@ function MinimalPlayer({ playlist, catalogLoading, catalogError }: {
 
       {isPlaylistOpen ? (
         <section
+          ref={playlistPanelRef}
           className="playlist-panel"
           id="active-playlist-panel"
           aria-label={`${playlist?.title ?? "Playlist"} track list`}
